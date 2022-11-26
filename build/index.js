@@ -1,148 +1,79 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-const fs = __importStar(require("fs"));
+// import { PassengerType } from './globals/passenger_type';
+const card_1 = require("./card/card");
+const trip_1 = require("./trip/trip");
+const common_utils_1 = __importDefault(require("./utils/common_utils"));
 let cards = [];
 let trips = [];
-let lines = readFile('./input/input1.txt');
+let lines = common_utils_1.default.readFile('./input/input1.txt');
+let calculateSummary = (trips) => {
+    ['CENTRAL', 'AIRPORT'].forEach(source => {
+        let totalCollection = 0;
+        let totalDiscount = 0;
+        let filteredTrips = trips.filter(trip => trip.source == source);
+        filteredTrips.forEach(trip => {
+            let result = common_utils_1.default.calculateDiscountAmount(trip.charge, trip.discountPercentage);
+            totalCollection += (trip.charge - result);
+            if (trip.rechargeAmount > 0) {
+                result = common_utils_1.default.calculateDiscountAmount(trip.rechargeAmount, 2);
+                totalCollection += result;
+            }
+            totalDiscount += trip.discountAmount;
+        });
+        console.log("TOTAL_COLLECTION", source, totalCollection, totalDiscount);
+    });
+    return null;
+};
 lines.forEach(line => {
     if (line.trim() !== '') {
-        console.log('line: ', line);
         let data = line.split(' ');
-        console.log(data);
         switch (data[0]) {
             case 'BALANCE': {
-                let indx = findCardIndexById(cards, data[1], parseInt(data[2]));
-                console.log('------------------------------------------');
-                console.log(cards);
+                let card = (0, card_1.createCard)(data[1]);
+                card = (0, card_1.updateBalance)(card, parseInt(data[2]));
+                cards.push(card);
                 break;
             }
             case 'CHECK_IN': {
-                let trip = createTrip(cards, trips, data[1], data[2], data[3]);
-                console.log('------------------------------------------');
-                console.log(trips);
+                console.log("^".repeat(190));
+                console.log("^".repeat(190));
+                console.log(data);
+                console.table(cards);
+                let card = cards.find(card => card.id == data[1]);
+                if (card) {
+                    let discountPercentage = (0, trip_1.getApplicableDiscount)(trips, data[1], data[3]);
+                    let discountAmount = 0;
+                    if (discountPercentage > 0) {
+                        let charge = common_utils_1.default.getCharge(data[2]);
+                        discountAmount = common_utils_1.default.getAmountAfterDiscount(charge, discountPercentage);
+                    }
+                    let trip = (0, trip_1.createTrip)(common_utils_1.default.getNewId(trips), data[1], data[2], data[3], (0, trip_1.getApplicableDiscount)(trips, data[1], data[3]), discountAmount, 0, 0);
+                    if (card.balance < common_utils_1.default.getCharge(data[2])) {
+                        let rechargeAmount = common_utils_1.default.getCharge(data[2]) - card.balance;
+                        card = (0, card_1.updateBalance)(card, -card.balance);
+                        trip = (0, trip_1.setTripCalculatedFields)(trip, rechargeAmount);
+                    }
+                    else {
+                        card = (0, card_1.updateBalance)(card, -(trip.charge - trip.discountAmount));
+                    }
+                    cards = common_utils_1.default.updateInList(cards, card);
+                    trips.push(trip);
+                }
                 break;
             }
             case 'PRINT_SUMMARY': {
+                console.table(trips);
+                console.table(cards);
+                calculateSummary(trips);
                 break;
             }
             default: {
-                //statements; 
                 break;
             }
         }
     }
 });
-function createTrip(cards, trips, id, passengerType, destination) {
-    let trip = {
-        id: getNewTripId(trips),
-        cardId: id,
-        passengerType: passengerType,
-        source: getSource(destination),
-        destination: destination,
-        charge: 0,
-        applicableDiscount: 0,
-        rechargeCharge: 0
-    };
-    trip.charge = getCharge(passengerType);
-    trip.applicableDiscount = getApplicableDiscount(trips, id, destination);
-    let indx = findCardIndexById(cards, id, 0);
-    if (cards[indx].balance < trip.charge) {
-        updateBalance(cards[indx], trip.charge - cards[indx].balance);
-        trip.rechargeCharge = 2;
-    }
-    trips.push(trip);
-    return trip;
-}
-function getApplicableDiscount(trips, id, destination) {
-    let discount = 0;
-    if (trips.length > 0) {
-        let filteredTrips = trips.filter((trip) => {
-            return (trip.cardId === id) && (trip.source === destination);
-        });
-        discount = filteredTrips.length > 0 ? 50 : 0;
-    }
-    return discount;
-}
-function getCharge(passengerType) {
-    let charge = 0;
-    switch (passengerType) {
-        case 'SENIOR_CITIZEN': {
-            charge = 100;
-            break;
-        }
-        case 'ADULT': {
-            charge = 200;
-            break;
-        }
-        case 'KID': {
-            charge = 50;
-            break;
-        }
-    }
-    return charge;
-}
-;
-function getSource(destination) {
-    return destination == 'CENTRAL' ? 'AIRPORT' : 'CENTRAL';
-}
-function getNewTripId(trips) {
-    let max = 0;
-    for (let i = 0; i < trips.length; i++) {
-        if (trips[i].id > max) {
-            max = trips[i].id;
-        }
-    }
-    return max + 1;
-}
-// find card by index and update the balance.
-function findCardIndexById(cards, id, balance) {
-    let cardIndex = cards.findIndex((card) => card.id == id);
-    if (cardIndex > -1) {
-        if (balance > 0) {
-            updateBalance(cards[cardIndex], balance);
-        }
-        return cardIndex;
-    }
-    else {
-        let card = { id: id, balance: balance | 0 };
-        cards.push(card);
-        return cards.findIndex((card) => card.id == id);
-    }
-}
-;
-function updateBalance(card, balance) {
-    card.balance += balance;
-    return card;
-}
-;
-function readFile(path) {
-    let lines = [];
-    const allFileContents = fs.readFileSync(path, 'utf-8');
-    allFileContents.split(/\r?\n/).forEach(line => {
-        lines.push(line);
-    });
-    return lines;
-}
